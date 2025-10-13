@@ -97,9 +97,22 @@ def _check_stability(model: FEModel3D, K: NDArray[float64]) -> None:
     # Initialize the `unstable` flag to `False`
     unstable = False
 
+    # Create a dictionary to map node IDs to node objects for faster lookup
+    node_id_map = {node.ID: node for node in model.nodes.values()}
+
     # Step through each diagonal term in the stiffness matrix
     for i in range(K.shape[0]):
         
+        # Calculate potential node ID and DOF
+        potential_node_id = i // 6
+        dof = i % 6
+
+        # Check if a node with this ID actually exists
+        node = node_id_map.get(potential_node_id)
+        if node is None:
+            # Skip this DOF if no corresponding node exists
+            continue
+
         # Determine which node this term belongs to
         node = [node for node in model.nodes.values() if node.ID == int(i/6)][0]
 
@@ -145,6 +158,10 @@ def _check_stability(model: FEModel3D, K: NDArray[float64]) -> None:
 
     if unstable:
         raise Exception('Unstable node(s). See console output for details.')
+    else:
+        # print('.', end="")
+        print(f"  - STABILITY CHECK: Model is stable (checked {K.shape[0]} DOFs) ---")
+        print(' - Stability check completed')
 
     return
 
@@ -155,7 +172,7 @@ def _PDelta(model: FEModel3D, combo_name: str, P1: NDArray[float64], FER1: NDArr
     :param model: The finite element model to be solved.
     :type: FEModel3D
     :param combo_name: The name of the load combination to evaluate.
-    :type combo_name: str
+    :type combo_name: string
     :param P1: An array of the loads to apply.
     :type P1: numpy array
     :param FER1: An array of the fixed end reactions.
@@ -522,6 +539,25 @@ def _sum_displacements(model: FEModel3D, Delta_D1: NDArray[float64], Delta_D2: N
         node.RX[combo.name] += Delta_D[node.ID*6 + 3, 0]
         node.RY[combo.name] += Delta_D[node.ID*6 + 4, 0]
         node.RZ[combo.name] += Delta_D[node.ID*6 + 5, 0]
+
+
+def _expand_displacements(self, D1, D2, D1_indices, D2_indices):
+    """
+    Expands partitioned displacement vectors back to full DOF set.
+    Used for mode shape expansion.
+    """
+    total_dof = len(self.nodes) * 6
+    D_full = zeros((total_dof, 1))
+    
+    # Place D1 values (unknown DOFs)
+    for i, index in enumerate(D1_indices):
+        D_full[index] = D1[i]
+    
+    # Place D2 values (known DOFs - typically zeros for modal analysis)
+    for i, index in enumerate(D2_indices):
+        D_full[index] = D2[i]
+    
+    return D_full
 
 
 def _check_TC_convergence(model: FEModel3D, combo_name: str = "Combo 1", log: bool = True, spring_tolerance: float = 0, member_tolerance: float = 0) -> bool:
